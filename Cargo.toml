@@ -1,0 +1,11 @@
+[package]
+name = "img-compare"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+image = { version = "0.25.5", features = ["avif-native"] }
+image-compare = "0.4.1"
+indicatif = { version = "0.17.9" }
+rayon = "1.10.0"
