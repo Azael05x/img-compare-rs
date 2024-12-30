@@ -22,4 +22,4 @@ Cargo.lock
 
 .DS_Store
 output.txt
-
+.cache
