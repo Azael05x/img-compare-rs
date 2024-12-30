@@ -1,8 +1,9 @@
-use image::{self, imageops::FilterType, DynamicImage};
+use image::{self, imageops::FilterType, DynamicImage, GrayImage};
 use image_compare::Algorithm;
 use indicatif::ProgressBar;
 use rayon::prelude::*;
 use std::{
+  error::Error,
   fs,
   path::{Path, PathBuf},
 };
@@ -13,15 +14,15 @@ use crate::{config::constants::CacheStrategy, Config};
 ///
 /// The comparison is done in parallel using Rayon, using multiple threads.
 pub fn compare_all_images(
-  images: &Vec<PathBuf>,
+  images: &[PathBuf],
   config: &Config,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   let pb = ProgressBar::new(images.len() as u64);
 
   let results = match config.cache_strategy {
-    CacheStrategy::Disk(path) => compare_with_disk_cache(&images, &config, &pb, path),
-    CacheStrategy::InMemory => compare_in_memory(&images, &config, &pb),
-    CacheStrategy::LRU => panic!("Is not implemented yet"),
+    CacheStrategy::Disk(path) => compare_with_disk_cache(images, config, &pb, path),
+    CacheStrategy::InMemory => compare_in_memory(images, config, &pb),
+    CacheStrategy::Lru => panic!("Is not implemented yet"),
   }?;
 
   pb.finish_with_message("done");
@@ -31,7 +32,7 @@ pub fn compare_all_images(
 
 /// Stores cached resized versions on disk for faster eventual lookups
 fn compare_with_disk_cache(
-  images: &Vec<PathBuf>,
+  images: &[PathBuf],
   config: &Config,
   progress: &ProgressBar,
   path: &Path,
@@ -39,75 +40,90 @@ fn compare_with_disk_cache(
   fs::create_dir_all(path)
     .map_err(|e| format!("Error creating folder \"{}\": {}", path.display(), e))?;
 
+  // Load image from disk or prepare and save on disk
+  // What is best format to save image to?
+  // match resized_image_one.save("/Users/aigarscibulskis-work/projects/img-compare/.cache/test.png") {
+  //   Ok(_) => (),
+  //   Err(err) => eprintln!("{}", err),
+  // }
+
+  // Pass buffer to image comparison method
+
   Ok(vec![])
 }
 
 /// Does all the job in memory, doesn't use cache or disk space
-/// TODO: Need to open first iterator image outside `compare_two_images`
 fn compare_in_memory(
-  images: &Vec<PathBuf>,
+  images: &[PathBuf],
   config: &Config,
   progress: &ProgressBar,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-  let result = images
+  let result: Result<Vec<_>, _> = images
     .par_iter()
     .enumerate()
-    .flat_map(|(i, file_a)| {
-      let result = images[(i + 1)..]
+    .map(|(i, file_a)| {
+      // Load image buffer once and provide it to comparison method
+      let image_one_file = image::open(file_a)
+        .map_err(|err| format!("Error loading image {}: {}", file_a.display(), err))?;
+      let resized_image_one = transform_image_to_processed_gray_image(image_one_file);
+
+      let comparisons: Result<Vec<_>, _> = images[(i + 1)..]
         .par_iter()
-        .filter_map(|file_b| match compare_two_images(file_a, file_b) {
-          Ok(similarity_score) if similarity_score > config.user_config.similarity_threshold => {
-            Some(format!(
-              "{:?} and {:?} are similar. Score: {:.2}\n",
-              file_a, file_b, similarity_score
-            ))
-          }
-          Ok(_) => None,
-          Err(err) => {
-            eprintln!("{}", err);
-            None
+        .filter_map(|file_b| {
+          let image_two_file = match image::open(file_b) {
+            Ok(img) => img,
+            Err(err) => {
+              return Some(Err(format!(
+                "Error loading image {}: {}",
+                file_b.display(),
+                err
+              )))
+            }
+          };
+          let resized_image_two = transform_image_to_processed_gray_image(image_two_file);
+
+          match compare_two_processed_images(&resized_image_one, &resized_image_two) {
+            Ok(similarity_score) if similarity_score > config.user_config.similarity_threshold => {
+              Some(Ok(format!(
+                "{:?} and {:?} are similar. Score: {:.2}\n",
+                file_a, file_b, similarity_score
+              )))
+            }
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
           }
         })
-        .collect::<Vec<_>>();
+        .collect();
 
       progress.inc(1);
 
-      result
+      comparisons
     })
-    .collect::<Vec<_>>();
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(Box::<dyn Error>::from);
 
-  Ok(result)
+  progress.finish_with_message("done");
+
+  // Flatten the nested results and propagate errors
+  result.map(|vecs| vecs.into_iter().flatten().collect())
 }
 
-fn compare_two_images(image_one: &PathBuf, image_two: &PathBuf) -> Result<f64, String> {
-  let image_one_file = image::open(image_one)
-    .map_err(|err| format!("Error loading image {}: {}", image_one.display(), err))?;
-  let image_two_file = image::open(image_two)
-    .map_err(|err| format!("Error loading image {}: {}", image_two.display(), err))?;
-
-  if !super::aspect_ratio::compare_aspect_ratios(&image_one_file, &image_two_file) {
-    return Ok(0.0);
-  }
-
-  let resized_image_one = image_one_file
+/// Transform image to specific size and style for comparison
+fn transform_image_to_processed_gray_image(image: DynamicImage) -> GrayImage {
+  image
     .resize_exact(100, 100, FilterType::Nearest)
-    .into_luma8();
-  let resized_image_two = image_two_file
-    .resize_exact(100, 100, FilterType::Nearest)
-    .into_luma8();
+    .into_luma8()
+}
 
+fn compare_two_processed_images(
+  image_one_file: &GrayImage,
+  image_two_file: &GrayImage,
+) -> Result<f64, String> {
   image_compare::gray_similarity_structure(
     &Algorithm::MSSIMSimple,
-    &resized_image_one,
-    &resized_image_two,
+    image_one_file,
+    image_two_file,
   )
   .map(|result| result.score)
-  .map_err(|err| {
-    format!(
-      "Error comparing images {} and {}: {}",
-      image_one.display(),
-      image_two.display(),
-      err
-    )
-  })
+  .map_err(|err| format!("Error comparing images: {}", err))
 }
