@@ -1,18 +1,54 @@
-use image::{self, imageops::FilterType};
+use image::{self, imageops::FilterType, DynamicImage};
 use image_compare::Algorithm;
 use indicatif::ProgressBar;
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::{
+  fs,
+  path::{Path, PathBuf},
+};
 
-use crate::Config;
+use crate::{config::constants::CacheStrategy, Config};
 
-/**
-* Compare all images in the given list and return a list of similar images.
-* The comparison is done in parallel using Rayon, using multiple threads.
-*/
-pub fn compare_all_images(images: &Vec<PathBuf>, config: &Config) -> Vec<String> {
+/// Compare all images in the given list and return a list of similar images.
+///
+/// The comparison is done in parallel using Rayon, using multiple threads.
+pub fn compare_all_images(
+  images: &Vec<PathBuf>,
+  config: &Config,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   let pb = ProgressBar::new(images.len() as u64);
 
+  let results = match config.cache_strategy {
+    CacheStrategy::Disk(path) => compare_with_disk_cache(&images, &config, &pb, path),
+    CacheStrategy::InMemory => compare_in_memory(&images, &config, &pb),
+    CacheStrategy::LRU => panic!("Is not implemented yet"),
+  }?;
+
+  pb.finish_with_message("done");
+
+  Ok(results)
+}
+
+/// Stores cached resized versions on disk for faster eventual lookups
+fn compare_with_disk_cache(
+  images: &Vec<PathBuf>,
+  config: &Config,
+  progress: &ProgressBar,
+  path: &Path,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+  fs::create_dir_all(path)
+    .map_err(|e| format!("Error creating folder \"{}\": {}", path.display(), e))?;
+
+  Ok(vec![])
+}
+
+/// Does all the job in memory, doesn't use cache or disk space
+/// TODO: Need to open first iterator image outside `compare_two_images`
+fn compare_in_memory(
+  images: &Vec<PathBuf>,
+  config: &Config,
+  progress: &ProgressBar,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
   let result = images
     .par_iter()
     .enumerate()
@@ -34,15 +70,13 @@ pub fn compare_all_images(images: &Vec<PathBuf>, config: &Config) -> Vec<String>
         })
         .collect::<Vec<_>>();
 
-      pb.inc(1);
+      progress.inc(1);
 
       result
     })
     .collect::<Vec<_>>();
 
-  pb.finish_with_message("done");
-
-  result
+  Ok(result)
 }
 
 fn compare_two_images(image_one: &PathBuf, image_two: &PathBuf) -> Result<f64, String> {
