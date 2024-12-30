@@ -25,7 +25,8 @@ fn main() {
     path: args.folder.clone(),
     output: args.output.clone(),
     similarity_threshold: args.similarity_threshold.parse().unwrap_or(0.9),
-  }).unwrap_or_else(|err| {
+  })
+  .unwrap_or_else(|err| {
     eprintln!("Error: {}", err);
     process::exit(1);
   });
