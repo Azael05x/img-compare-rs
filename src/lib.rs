@@ -20,7 +20,7 @@ pub struct Config {
 impl Config {
   pub fn new(args: PublicConfig) -> Result<Config, &'static str> {
     let similarity_threshold = args.similarity_threshold;
-    if similarity_threshold < 0.0 || similarity_threshold > 1.0 {
+    if !(0.0..=1.0).contains(&similarity_threshold) {
       return Err("Similarity threshold must be between 0.0 and 1.0");
     }
 
