@@ -82,7 +82,7 @@ fn compare_in_memory(
           };
           let resized_image_two = transform_image_to_processed_gray_image(image_two_file);
 
-          match compare_two_processed_images(&resized_image_one, &resized_image_two) {
+          match compare_two_processed_gray_images(&resized_image_one, &resized_image_two) {
             Ok(similarity_score) if similarity_score > config.user_config.similarity_threshold => {
               Some(Ok(format!(
                 "{:?} and {:?} are similar. Score: {:.2}\n",
@@ -115,7 +115,7 @@ fn transform_image_to_processed_gray_image(image: DynamicImage) -> GrayImage {
     .into_luma8()
 }
 
-fn compare_two_processed_images(
+fn compare_two_processed_gray_images(
   image_one_file: &GrayImage,
   image_two_file: &GrayImage,
 ) -> Result<f64, String> {
