@@ -1,11 +1,11 @@
 use std::{fs::File, io::Write, path::Path};
 
-mod list;
 use config::constants::CacheStrategy;
-use list::images;
+use library::list;
 
 mod compare;
 mod config;
+mod library;
 
 pub struct PublicConfig {
   pub path: String,
@@ -31,16 +31,16 @@ impl Config {
         output: args.output,
         similarity_threshold: args.similarity_threshold,
       },
-      // cache_strategy: CacheStrategy::Disk(Path::new(".cache")),
-      cache_strategy: CacheStrategy::InMemory,
+      cache_strategy: CacheStrategy::Disk(Path::new(".cache")),
+      // cache_strategy: CacheStrategy::InMemory,
       // progress_bar_style: ProgressStyle::default_bar(),
     })
   }
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-  let images = images::list_images_recursively(Path::new(&config.user_config.path))?;
-  let compare_results = compare::compare::compare_all_images(&images, config)?;
+  let images = list::list_images_recursively(Path::new(&config.user_config.path))?;
+  let compare_results = compare::run::compare_all_images(&images, config)?;
 
   // Write all results to the output file
   let mut output = File::create(&config.user_config.output)?;

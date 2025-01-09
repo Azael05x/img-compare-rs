@@ -1,2 +1,2 @@
-pub mod images;
+pub mod list;
 mod is_image_file;
