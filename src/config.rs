@@ -6,6 +6,6 @@ pub mod constants {
 
   pub enum CacheStrategy {
     Disk(&'static Path),
-    InMemory,
+    // InMemory,
   }
 }

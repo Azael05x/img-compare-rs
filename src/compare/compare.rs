@@ -6,7 +6,8 @@ pub fn compare_two_processed_gray_images(
   image_two_file: &GrayImage,
 ) -> Result<f64, String> {
   image_compare::gray_similarity_structure(&Algorithm::MSSIMSimple, image_one_file, image_two_file)
-    .map(|result| result.score)
+    // Normalize to ".xx"
+    .map(|result| (result.score * 100.0).round() / 100.0)
     .map_err(|err| format!("Error comparing images: {}", err))
 }
 

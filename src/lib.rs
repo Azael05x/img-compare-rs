@@ -1,5 +1,6 @@
-use std::{fs::File, io::Write, path::Path};
+use std::path::Path;
 
+use clap::ValueEnum;
 use config::constants::CacheStrategy;
 use library::list;
 
@@ -7,10 +8,18 @@ mod compare;
 mod config;
 mod library;
 
+#[derive(ValueEnum, Clone, Debug)]
+pub enum OutputFormat {
+  Txt,
+  Json,
+  Csv,
+}
+
 pub struct PublicConfig {
   pub path: String,
-  pub output: String,
   pub similarity_threshold: f64,
+  pub output_format: OutputFormat,
+  pub output_all_scores: bool,
 }
 
 pub struct Config {
@@ -28,12 +37,11 @@ impl Config {
     Ok(Config {
       user_config: PublicConfig {
         path: args.path,
-        output: args.output,
         similarity_threshold: args.similarity_threshold,
+        output_format: args.output_format,
+        output_all_scores: args.output_all_scores,
       },
-      cache_strategy: CacheStrategy::Disk(Path::new(".cache")),
-      // cache_strategy: CacheStrategy::InMemory,
-      // progress_bar_style: ProgressStyle::default_bar(),
+      cache_strategy: CacheStrategy::Disk(Path::new("/tmp/img-compare")),
     })
   }
 }
@@ -41,12 +49,7 @@ impl Config {
 pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
   let images = list::list_images_recursively(Path::new(&config.user_config.path))?;
   let compare_results = compare::run::compare_all_images(&images, config)?;
-
-  // Write all results to the output file
-  let mut output = File::create(&config.user_config.output)?;
-  for result in compare_results {
-    writeln!(output, "{}", result)?;
-  }
+  compare::output::save_output(&compare_results, config)?;
 
   Ok(())
 }
