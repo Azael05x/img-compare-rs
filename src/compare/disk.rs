@@ -14,7 +14,7 @@ use super::output::Output;
 /// Stores cached resized versions on disk for faster eventual lookups
 pub fn compare_with_disk_cache(
   images: &[PathBuf],
-  config: &Config,
+  _config: &Config,
   cache_path: &Path,
 ) -> Result<Vec<Output>, Box<dyn Error>> {
   // Create folder for cached images
@@ -53,7 +53,7 @@ pub fn compare_with_disk_cache(
         };
 
         let score =
-          super::compare::compare_two_processed_gray_images(&image_one_file, &image_two_file)
+          super::process::compare_two_processed_gray_images(&image_one_file, &image_two_file)
             .unwrap();
 
         Some(Output {
@@ -85,7 +85,7 @@ fn get_cached_resized_image(
 
   if cached_path.exists() {
     // Load from cache
-    let cached_image = image::open(&cached_path)?;
+    let cached_image = image::open(cached_path)?;
 
     return match cached_image {
       DynamicImage::ImageLuma8(image) => Ok(image),
@@ -93,8 +93,8 @@ fn get_cached_resized_image(
     };
   }
 
-  let image = image::open(&image_path)?;
-  let resized = super::compare::image_to_processed_gray_image(image);
+  let image = image::open(image_path)?;
+  let resized = super::process::image_to_processed_gray_image(image);
   resized.save(&cached_path)?;
   Ok(resized)
 }
